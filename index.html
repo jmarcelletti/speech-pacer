@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Pacer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+
+        textarea {
+            width: 80%;
+            height: 100px;
+            font-size: 1em;
+        }
+
+        #speechContainer {
+            font-size: 1.5em;
+            max-width: 80%;
+            margin: auto;
+            text-align: left;
+        }
+
+        .highlight {
+            background-color: yellow;
+        }
+
+        button {
+            margin: 10px;
+            padding: 10px;
+            font-size: 1em;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Speech Pacer</h1>
+    <textarea id="speechText" placeholder="Paste your speech here..."></textarea>
+    <br>
+    <label>Duration (seconds): </label>
+    <input type="number" id="duration" min="1">
+    <br>
+    <p id="status"></p>
+    <div id="speechContainer"></div>
+    <br>
+    <button id="play" onclick="playSpeech()">Play</button>
+    <button id="pause" onclick="pauseSpeech()" disabled>Pause</button>
+
+    <script>
+        let ws;
+        let words = [];
+        let timings = [];
+        let index = 0;
+        let running = false;
+        let interval;
+
+        function playSpeech() {
+            if (running) return;
+            running = true;
+
+            document.getElementById("play").disabled = true;
+            document.getElementById("pause").disabled = false;
+
+            let text = document.getElementById("speechText").value.trim();
+            let duration = parseInt(document.getElementById("duration").value);
+
+            if (!text || isNaN(duration) || duration <= 0) {
+                alert("Please enter a valid speech and duration.");
+                resetButtons();
+                return;
+            }
+
+            processSpeech(text, duration);
+            startHighlighting();
+        }
+
+        function processSpeech(text, totalTime) {
+            words = text.match(/(\.{1,}|[^\s]+)/g) || [];
+            let totalPauses = 0;
+
+            timings = words.map(word => {
+                if (word.startsWith(".")) {
+                    let pauseTime = word.length * 2;
+                    totalPauses += pauseTime;
+                    return pauseTime;
+                }
+                return 0;
+            });
+
+            let wordTime = (totalTime - totalPauses) / (words.length - timings.filter(t => t > 0).length);
+            timings = timings.map(t => (t === 0 ? wordTime : t));
+
+            let speechHTML = words.map((word, i) => `<span id="word-${i}">${word}</span>`).join(" ");
+            document.getElementById("speechContainer").innerHTML = speechHTML;
+        }
+
+        function startHighlighting() {
+            index = 0;
+            highlightWord();
+        }
+
+        function highlightWord() {
+            if (!running || index >= words.length) {
+                resetButtons();
+                return;
+            }
+
+            let prev = document.getElementById(`word-${index - 1}`);
+            let curr = document.getElementById(`word-${index}`);
+
+            if (prev) prev.classList.remove("highlight");
+            if (curr) curr.classList.add("highlight");
+
+            setTimeout(() => {
+                index++;
+                highlightWord();
+            }, timings[index] * 1000);
+        }
+
+        function pauseSpeech() {
+            running = false;
+            document.getElementById("play").disabled = false;
+            document.getElementById("pause").disabled = true;
+        }
+
+        function resetButtons() {
+            running = false;
+            document.getElementById("play").disabled = false;
+            document.getElementById("pause").disabled = true;
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket("ws://" + window.location.host + "/ws");
+            ws.onclose = () => console.log("WebSocket closed");
+        }
+
+        window.onload = connectWebSocket;
+    </script>
+</body>
+
+</html>
